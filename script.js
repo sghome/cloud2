@@ -42,23 +42,7 @@ function init() {
     scene.add(light);
   
     
-      const gltfLoader = new THREE.GLTFLoader();
-  gltfLoader.load('https://cdn.glitch.me/2bc9552a-c9df-4a0a-bdf1-af20de3c372e/project.glb', (gltf) => {
-    const root = gltf.scene;
-    scene.add(root);
-
-    // compute the box that contains all the stuff
-    // from root and below
-    const box = new THREE.Box3().setFromObject(root);
-
-    const boxSize = box.getSize(new THREE.Vector3()).length();
-    const boxCenter = box.getCenter(new THREE.Vector3());
-
-    // update the Trackball controls to handle the new size
-    controls.maxDistance = boxSize * 2;
-    controls.target.copy(boxCenter);
-    controls.update();
-  });
+ 
     
     
     smokeTexture = THREE.ImageUtils.loadTexture('https://s3-us-west-2.amazonaws.com/s.cdpn.io/95637/Smoke-Element.png');
