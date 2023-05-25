@@ -1,92 +1,107 @@
-var camera, scene, renderer,
-    geometry, material, mesh;
- 
-init();
-animate(); 
+console.clear();
 
-function init() {
-    stats = new Stats();
-    stats.setMode(0);
-    stats.domElement.style.position = 'absolute';
-    stats.domElement.style.left = '0px';
-    stats.domElement.style.top = '0px';
-    document.body.appendChild(stats.domElement);
+const stage = new PIXI.Stage(0x0, true);
+const renderer = PIXI.autoDetectRenderer(window.innerWidth, window.innerHeight, {
+  view: document.querySelector('canvas') });
 
-    clock = new THREE.Clock();
 
-    renderer = new THREE.WebGLRenderer();
-    renderer.setSize( window.innerWidth, window.innerHeight );
+const uniforms = {
+  resolution: {
+    type: '2f',
+    value: {
+      x: window.innerWidth,
+      y: window.innerHeight } },
 
-    scene = new THREE.Scene();
- 
-    camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 10000 );
-    camera.position.z = 1000;
-    scene.add( camera );
- 
-    geometry = new THREE.CubeGeometry( 200, 200, 200 );
-    material = new THREE.MeshLambertMaterial( { color: 0xaa6666, wireframe: false } );
-    mesh = new THREE.Mesh( geometry, material );
-    //scene.add( mesh );
-    cubeSineDriver = 0;
- 
-    textGeo = new THREE.PlaneGeometry(300,300);
-    THREE.ImageUtils.crossOrigin = ''; //Need this to pull in crossdomain images from AWS
-    textTexture = THREE.ImageUtils.loadTexture('https://s3-us-west-2.amazonaws.com/s.cdpn.io/95637/quickText.png');
-    textMaterial = new THREE.MeshLambertMaterial({color: 0x00ffff, opacity: 1, map: textTexture, transparent: true, blending: THREE.AdditiveBlending})
-    text = new THREE.Mesh(textGeo,textMaterial);
-    text.position.z = 800;
-    scene.add(text);
 
-    light = new THREE.DirectionalLight(0xffffff,0.5);
-    light.position.set(-1,0,1);
-    scene.add(light);
+  alpha: {
+    type: '1f',
+    value: 1 },
+
+  shift: {
+    type: '1f',
+    value: 1.6 },
+
+  time: {
+    type: '1f',
+    value: 0 },
+
+  speed: {
+    type: '2f',
+    value: {
+      x: 0.7,
+      y: 0.4 } } };
+
+
+
+
+const fragmentSrc = `
+precision mediump float;
+uniform vec2      resolution;
+uniform float     time;
+uniform float     alpha;
+uniform vec2      speed;
+uniform float     shift;
   
-    
- 
-    
-    
-    smokeTexture = THREE.ImageUtils.loadTexture('https://s3-us-west-2.amazonaws.com/s.cdpn.io/95637/Smoke-Element.png');
-    smokeMaterial = new THREE.MeshLambertMaterial({color: 0x00dddd, map: smokeTexture, transparent: true});
-    smokeGeo = new THREE.PlaneGeometry(300,300);
-    smokeParticles = [];
-
-
-    for (p = 0; p < 150; p++) {
-        var particle = new THREE.Mesh(smokeGeo,smokeMaterial);
-        particle.position.set(Math.random()*500-250,Math.random()*500-250,Math.random()*1000-100);
-        particle.rotation.z = Math.random() * 360;
-        scene.add(particle);
-        smokeParticles.push(particle);
-    }
- 
-    document.body.appendChild( renderer.domElement );
- 
-}
- 
-function animate() {
- 
-    // note: three.js includes requestAnimationFrame shim
-    stats.begin();
-    delta = clock.getDelta();
-    requestAnimationFrame( animate );
-    evolveSmoke();
-    render();
-    stats.end();
-}
- 
-function evolveSmoke() {
-    var sp = smokeParticles.length;
-    while(sp--) {
-        smokeParticles[sp].rotation.z += (delta * 0.2);
-    }
+float rand(vec2 n) {
+ return fract(cos(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
 }
 
-function render() {
- 
-    mesh.rotation.x += 0.005;
-    mesh.rotation.y += 0.01;
-    cubeSineDriver += .01;
-    mesh.position.z = 100 + (Math.sin(cubeSineDriver) * 500);
-    renderer.render( scene, camera );
- 
+float noise(vec2 n) {
+  const vec2 d = vec2(0.0, 1.0);
+  vec2 b = floor(n), f = smoothstep(vec2(0.0), vec2(1.0), fract(n));
+  return mix(mix(rand(b), rand(b + d.yx), f.x), mix(rand(b + d.xy), rand(b + d.yy), f.x), f.y);
 }
+
+float fbm(vec2 n) {
+  float total = 0.0, amplitude = 1.0;
+  for (int i = 0; i < 4; i++) {
+    total += noise(n) * amplitude;
+    n += n;
+    amplitude *= 0.5;
+  }
+  return total;
+}
+
+void main() {
+  const vec3 c1 = vec3(126.0/255.0, 0.0/255.0, 97.0/255.0);
+  const vec3 c2 = vec3(173.0/255.0, 0.0/255.0, 161.4/255.0);
+  const vec3 c3 = vec3(0.2, 0.0, 0.0);
+  const vec3 c4 = vec3(164.0/255.0, 1.0/255.0, 214.4/255.0);
+  const vec3 c5 = vec3(0.1);
+  const vec3 c6 = vec3(0.9);
+
+  vec2 p = gl_FragCoord.xy * 8.0 / resolution.xx;
+  float q = fbm(p - time * 0.1);
+  vec2 r = vec2(fbm(p + q + time * speed.x - p.x - p.y), fbm(p + q - time * speed.y));
+  vec3 c = mix(c1, c2, fbm(p + r)) + mix(c3, c4, r.x) - mix(c5, c6, r.y);
+  float grad = gl_FragCoord.y / resolution.y;
+  gl_FragColor = vec4(c * cos(shift * gl_FragCoord.y / resolution.y), 1.0);
+  gl_FragColor.xyz *= 1.0-grad;
+}
+`;
+
+const filter = new PIXI.AbstractFilter(fragmentSrc.split('\n'), uniforms);
+
+const bg = PIXI.Sprite.fromImage('https://s3-us-west-2.amazonaws.com/s.cdpn.io/167451/test_BG.jpg');
+bg.width = window.innerWidth;
+bg.height = window.innerHeight;
+bg.shader = filter;
+stage.addChild(bg);
+
+const logo = PIXI.Sprite.fromImage('https://cdn.glitch.global/2bc9552a-c9df-4a0a-bdf1-af20de3c372e/alma.png');
+logo.x = window.innerWidth / 2;
+logo.y = window.innerHeight / 2;
+logo.anchor.set(0.5);
+logo.blendMode = PIXI.blendModes.ADD;
+stage.addChild(logo);
+
+function update(timestamp) {
+  filter.uniforms.time.value = timestamp / 1000;
+  filter.syncUniforms();
+
+  renderer.render(stage);
+
+  requestAnimationFrame(update);
+}
+
+requestAnimationFrame(update);
